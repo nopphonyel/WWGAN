@@ -1,0 +1,12 @@
+
+.idea/
+
+dataset/__pycache__/
+
+model/semi_supervised/__pycache__/
+
+training/semi_supervised/exported/
+
+test_exec.py
+
+dataset/
