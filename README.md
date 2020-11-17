@@ -1,0 +1,1 @@
+WWGAN_slim
