@@ -12,11 +12,32 @@ def show_loss_graph(title: str, train_loss: list, eval_loss: list, export=False,
     :param train_loss: List of training loss value
     :param eval_loss: List of evaluation loss value
     :param export: Specify to export the loss graph as image file or not (.png file)
+    :param filename: Specify filename to export
     :return: nothing
     """
     plt.title(title)
     plt.plot(train_loss, label="Training loss")
     plt.plot(eval_loss, label="Eval loss")
+    plt.legend()
+    plt.show()
+    if export:
+        plt.savefig(LOG_PATH + filename)
+    plt.clf()
+
+
+def show_gan_loss_graph(title: str, dis_loss: list, gen_loss: list, export=False, filename='GANs_loss.png'):
+    """
+    This function will visualize the loss value of GANs
+    :param title: Title of figure
+    :param dis_loss: Discriminator loss array list
+    :param gen_loss: Generator loss array list
+    :param export: Specify to export graph as image or not
+    :param filename: Filename to export
+    :return:
+    """
+    plt.title(title)
+    plt.plot(dis_loss, label="Discriminator loss")
+    plt.plot(gen_loss, label="Generator loss")
     plt.legend()
     plt.show()
     if export:

@@ -39,18 +39,22 @@ d1_op = torch.optim.Adam(d1.parameters(), lr=mu2)
 d2_op = torch.optim.Adam(d2.parameters(), lr=mu2)
 G_op = torch.optim.Adam(G.parameters(), lr=mu2)
 
-train_gan_loss = []
+train_dis_loss = []
+train_gen_loss = []
 train_extr_loss = []
-eval_gan_loss = []
+eval_dis_loss = []
+eval_gen_loss = []
 eval_extr_loss = []
 min_gan_loss = None
 min_extr_loss = None
 for i in range(EPCH + 1):
     print("Epoch", i, "/", EPCH)
     # Initialize before entering the training session
-    epch_train_gan_loss = []  # GANs loss
+    epch_train_gen_loss = []  # Generator loss
+    epch_train_dis_loss = []  # Discriminator loss
     epch_train_extr_loss = []  # Feature extractor loss
-    epch_eval_gan_loss = []
+    epch_eval_gen_loss = []
+    epch_eval_dis_loss = []
     epch_eval_extr_loss = []
     preview_img = None
 
@@ -132,13 +136,13 @@ for i in range(EPCH + 1):
                 # print("UPDATING GENERATOR")
                 G_op.zero_grad()
 
-            l1 = l1_loss(d1, x_p, x_p_gen, True)
-            l2 = l2_loss(d2, x_p, x_p_gen, fy_p, ly_p, True)
-            l3 = l3_loss(d1, x_u, x_u_gen, True)
-            l4 = l4_loss(d2, x_u, x_u_gen, fx_u, lx_u, True)
+            l1 = l1_g_loss(d1, x_p, x_p_gen)
+            l2 = l2_g_loss(d2, x_p_gen, fy_p, ly_p)
+            l3 = l3_g_loss(d1, x_u, x_u_gen)
+            l4 = l4_g_loss(d2, x_u_gen, fx_u, lx_u)
 
             # Need to recalculate loss to re-backpropagation
-            gl_loss = -10000 * ((ld1 * l1) + l2 + (ld2 * l3) + l4)
+            gl_loss = -((ld1 * l1) + l2 + (ld2 * l3) + l4)
 
             if session is TRAIN:
                 gl_loss.backward()
@@ -149,15 +153,20 @@ for i in range(EPCH + 1):
             # Append loss value
             if session is TRAIN:
                 epch_train_extr_loss.append(j_loss.item())
-                epch_train_gan_loss.append(gl_loss.item())
+                epch_train_dis_loss.append(dl_loss.item())
+                epch_train_gen_loss.append(gl_loss.item())
             else:
                 epch_eval_extr_loss.append(j_loss.item())
-                epch_eval_gan_loss.append(gl_loss.item())
+                epch_eval_dis_loss.append(dl_loss.item())
+                epch_eval_gen_loss.append(gl_loss.item())
 
     # Now after finish all dataset in each epoch, average all loss
-    train_gan_loss.append(np.average(epch_train_gan_loss))
+    train_gen_loss.append(np.average(epch_train_gen_loss))
+    train_dis_loss.append(np.average(epch_train_dis_loss))
     train_extr_loss.append(np.average(epch_train_extr_loss))
-    eval_gan_loss.append(np.average(epch_eval_gan_loss))
+
+    eval_gen_loss.append(np.average(epch_eval_gen_loss))
+    eval_dis_loss.append(np.average(epch_eval_dis_loss))
     eval_extr_loss.append(np.average(epch_eval_extr_loss))
 
     # Find new min loss value and export the model
@@ -170,10 +179,10 @@ for i in range(EPCH + 1):
             torch.save(sy.state_dict(), EXPORT_PATH + "sy.pth")
 
     if min_gan_loss is None:
-        min_gan_loss = eval_gan_loss[0]
+        min_gan_loss = eval_gen_loss[0]
     else:
-        if eval_gan_loss[-1] < min_gan_loss:
-            min_gan_loss = eval_gan_loss[-1]
+        if eval_gen_loss[-1] < min_gan_loss:
+            min_gan_loss = eval_gen_loss[-1]
             torch.save(d1.state_dict(), EXPORT_PATH + "d1.pth")
             torch.save(d2.state_dict(), EXPORT_PATH + "d2.pth")
             torch.save(G.state_dict(), EXPORT_PATH + "g.pth")
@@ -181,11 +190,15 @@ for i in range(EPCH + 1):
     if i % 5 == 0:
         print("\t > Logging...")
         # Dumping loss file
-        dump_loss_log(train_gan_loss, "training_generator_loss.csv")
+        dump_loss_log(train_dis_loss, "training_discriminator_loss.csv")
+        dump_loss_log(train_gen_loss, "training_generator_loss.csv")
         dump_loss_log(train_extr_loss, "training_extractor_loss.csv")
-        dump_loss_log(eval_gan_loss, "eval_generator_loss.csv")
+
+        dump_loss_log(eval_dis_loss, "eval_discriminator_loss.csv")
+        dump_loss_log(eval_gen_loss, "eval_generator_loss.csv")
         dump_loss_log(eval_extr_loss, "eval_extractor_loss.csv")
 
         show_loss_graph("Feature extractor loss", train_extr_loss, eval_extr_loss, True, 'extr_loss.png')
-        show_loss_graph("Generator loss", train_gan_loss, eval_gan_loss, True, 'gen_loss.png')
+        show_gan_loss_graph("Training GAN loss", train_dis_loss, train_gen_loss, True, 'training_gan_loss.png')
+        show_gan_loss_graph("Eval GAN loss", eval_dis_loss, eval_gen_loss, True, 'eval_gan_loss.png')
         show_gen_res(preview_img, True)
