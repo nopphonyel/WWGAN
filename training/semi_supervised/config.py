@@ -16,8 +16,14 @@ feature_size = 200
 EPCH = 10000
 
 # Device selection
-DEV = "cuda:1"
+DEV = "cpu"
 
 # Model export and load path
 EXPORT_PATH = 'training/semi_supervised/exported/model_weight/'
 LOG_PATH = 'training/semi_supervised/exported/'
+
+# Training config
+GEN_TRAIN_ITR_COUNT = 5  # How many times need to update gen before update a discrim for a single time
+
+# Visualize config
+SHOW_INTERVAL = 1

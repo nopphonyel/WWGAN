@@ -1,15 +1,12 @@
-from training.semi_supervised.config import *  # Import configuration
-import torch
 from dataset.eeg_dataset import EEG_DATASET
 from model.semi_supervised.loss_func import *
 from torch.utils.data import DataLoader
-from training.semi_supervised.visualize_helper import *
-from tqdm import trange
+from training.visualize_helper import *
 import numpy as np
 
 torch.autograd.set_detect_anomaly(True)
 
-# Some constant defination
+# Some constant definition
 TRAIN = "t"
 EVAL = "e"
 
@@ -57,6 +54,7 @@ for i in range(EPCH + 1):
     epch_eval_dis_loss = []
     epch_eval_extr_loss = []
     preview_img = None
+    preview_label = None
 
     for session in [TRAIN, EVAL]:
         # Initialize stuff in each session
@@ -117,14 +115,15 @@ for i in range(EPCH + 1):
             x_u_gen_dtch = x_u_gen.detach()
 
             if session is EVAL:
-                preview_img = x_u_gen_dtch
+                preview_img = x_p_gen_dtch
+                preview_label = l_real_p
 
             l1 = l1_loss(d1, x_p, x_p_gen_dtch)
             l2 = l2_loss(d2, x_p, x_p_gen_dtch, fy_p, ly_p)
             l3 = l3_loss(d1, x_u, x_u_gen_dtch)
             l4 = l4_loss(d2, x_u, x_u_gen_dtch, fx_u, lx_u)
 
-            dl_loss = -((ld1 * l1) + l2 + (ld2 * l3) + l4)
+            dl_loss = -((ld1 * l1) + l2 + (ld2 * l3) + l4)  # using minus to do ascend instead
 
             if session is TRAIN:
                 dl_loss.backward()
@@ -132,33 +131,43 @@ for i in range(EPCH + 1):
                 d2_op.step()
 
             # GENERATOR TRAINING SECTION
-            if session is TRAIN:
-                # print("UPDATING GENERATOR")
-                G_op.zero_grad()
+            # Another iteration for optimize a generator for couple of times before
+            # a single optimizing discriminator
 
-            l1 = l1_g_loss(d1, x_p, x_p_gen)
-            l2 = l2_g_loss(d2, x_p_gen, fy_p, ly_p)
-            l3 = l3_g_loss(d1, x_u, x_u_gen)
-            l4 = l4_g_loss(d2, x_u_gen, fx_u, lx_u)
+            gen_train_it = GEN_TRAIN_ITR_COUNT if session is TRAIN else 1
 
-            # Need to recalculate loss to re-backpropagation
-            gl_loss = -((ld1 * l1) + l2 + (ld2 * l3) + l4)
+            for j in range(gen_train_it):
 
-            if session is TRAIN:
-                gl_loss.backward()
-                # print("L LOSS", l1.item(), l2.item(), l3.item(), l4.item())
-                G_op.step()
-                # print(j_loss.item(), dl_loss.item(), gl_loss.item())
+                # Need to regen the image to prevent backward through the graph a second time error.
+                x_p_gen = G.forward(z=torch.rand((curr_BS, feature_size)).to(DEV), semantic=fy_p, label=ly_p)
+                x_u_gen = G.forward(z=torch.rand((curr_BS, feature_size)).to(DEV), semantic=fx_u, label=lx_u)
 
-            # Append loss value
-            if session is TRAIN:
-                epch_train_extr_loss.append(j_loss.item())
-                epch_train_dis_loss.append(dl_loss.item())
-                epch_train_gen_loss.append(gl_loss.item())
-            else:
-                epch_eval_extr_loss.append(j_loss.item())
-                epch_eval_dis_loss.append(dl_loss.item())
-                epch_eval_gen_loss.append(gl_loss.item())
+                if session is TRAIN:
+                    G_op.zero_grad()
+
+                l1 = l1_g_loss(d1, x_p, x_p_gen)
+                l2 = l2_g_loss(d2, x_p_gen, fy_p, ly_p)
+                l3 = l3_g_loss(d1, x_u, x_u_gen)
+                l4 = l4_g_loss(d2, x_u_gen, fx_u, lx_u)
+
+                # Need to recalculate loss to re-backpropagation
+                gl_loss = -((ld1 * l1) + l2 + (ld2 * l3) + l4)
+
+                if session is TRAIN:
+                    gl_loss.backward()
+                    # print("L LOSS", l1.item(), l2.item(), l3.item(), l4.item())
+                    G_op.step()
+                    # print(j_loss.item(), dl_loss.item(), gl_loss.item())
+
+                # Append loss value
+                if session is TRAIN:
+                    epch_train_extr_loss.append(j_loss.item())
+                    epch_train_dis_loss.append(dl_loss.item())
+                    epch_train_gen_loss.append(gl_loss.item())
+                else:
+                    epch_eval_extr_loss.append(j_loss.item())
+                    epch_eval_dis_loss.append(dl_loss.item())
+                    epch_eval_gen_loss.append(gl_loss.item())
 
     # Now after finish all dataset in each epoch, average all loss
     train_gen_loss.append(np.average(epch_train_gen_loss))
@@ -187,7 +196,7 @@ for i in range(EPCH + 1):
             torch.save(d2.state_dict(), EXPORT_PATH + "d2.pth")
             torch.save(G.state_dict(), EXPORT_PATH + "g.pth")
 
-    if i % 5 == 0:
+    if i % SHOW_INTERVAL == 0:
         print("\t > Logging...")
         # Dumping loss file
         dump_loss_log(train_dis_loss, "training_discriminator_loss.csv")
@@ -201,4 +210,4 @@ for i in range(EPCH + 1):
         show_loss_graph("Feature extractor loss", train_extr_loss, eval_extr_loss, True, 'extr_loss.png')
         show_gan_loss_graph("Training GAN loss", train_dis_loss, train_gen_loss, True, 'training_gan_loss.png')
         show_gan_loss_graph("Eval GAN loss", eval_dis_loss, eval_gen_loss, True, 'eval_gan_loss.png')
-        show_gen_res(preview_img, True)
+        show_gen_res(preview_img, preview_label, True)
